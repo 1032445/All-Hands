@@ -1,36 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public enum RitualRole
-{
-    Crew,
-    Cultist
-}
-
-public enum HudMessage
-{
-    None,
-    Pickup,
-    Drop,
-    Curse,
-    AlreadyCursed,
-    BringItem,
-    BringCursedItem,
-    Offer,
-    MoveCloser,
-    PickedUp = 10,
-    Dropped,
-    NothingToPickUp,
-    NothingToInteract,
-    Cursed,
-    Offered,
-    CursedOffering,
-    CrewRole,
-    CultistRole,
-    CrewWin,
-    CultistWin
-}
-
 public interface IInteractable
 {
     HudMessage GetInteractionPrompt(PlayerInteractor player);
@@ -54,6 +24,9 @@ public class PlayerInteractor : MonoBehaviour
     private float feedbackUntil;
     private RitualItem curseTarget;
     private float curseElapsed;
+    private CleansingStation cleanseTarget;
+    private RitualItem cleanseItem;
+    private float cleanseElapsed;
 
     public RitualRole Role => role;
     public Rigidbody HeldBody => pickup.HeldBody;
@@ -61,9 +34,16 @@ public class PlayerInteractor : MonoBehaviour
     public HudMessage InteractionPrompt { get; private set; }
     public HudMessage PickupPrompt { get; private set; }
     public HudMessage Feedback => Time.unscaledTime < feedbackUntil ? feedback : HudMessage.None;
+    public bool IsProcessing => IsCursing || IsCleansing;
     public bool IsCursing => curseTarget != null;
-    public float CurseProgress => IsCursing ? Mathf.Clamp01(curseElapsed / curseTarget.CurseDuration) : 0f;
-    public float CurseTimeRemaining => IsCursing ? Mathf.Max(0f, curseTarget.CurseDuration - curseElapsed) : 0f;
+    public bool IsCleansing => cleanseTarget != null && cleanseItem != null;
+    internal RitualItem CurseTarget => curseTarget;
+    public float ProcessProgress => IsCursing
+        ? Mathf.Clamp01(curseElapsed / curseTarget.CurseDuration)
+        : IsCleansing ? Mathf.Clamp01(cleanseElapsed / cleanseItem.CurseDuration) : 0f;
+    public float ProcessTimeRemaining => IsCursing
+        ? Mathf.Max(0f, curseTarget.CurseDuration - curseElapsed)
+        : IsCleansing ? Mathf.Max(0f, cleanseItem.CurseDuration - cleanseElapsed) : 0f;
 
     private void Awake()
     {
@@ -88,7 +68,7 @@ public class PlayerInteractor : MonoBehaviour
 
     private void OnDisable()
     {
-        CancelCurse();
+        CancelTimedActions();
         pickupAction?.Disable();
         interactAction?.Disable();
     }
@@ -105,13 +85,13 @@ public class PlayerInteractor : MonoBehaviour
         PickupPrompt = HudMessage.None;
         if (pickup.IsDropping || (matchSite != null && matchSite.Winner.HasValue))
         {
-            CancelCurse();
+            CancelTimedActions();
             return;
         }
 
         if (Cursor.lockState != CursorLockMode.Locked)
         {
-            CancelCurse();
+            CancelTimedActions();
             return;
         }
 
@@ -132,6 +112,7 @@ public class PlayerInteractor : MonoBehaviour
         }
 
         UpdateCurse(target, interactHeld && !pickupPressed);
+        UpdateCleanse(target, interactHeld && !pickupPressed);
 
         if (HeldBody == null && hit.collider != null && hit.collider.isTrigger)
             hit = GetTarget(viewRay, interactionRange, QueryTriggerInteraction.Ignore);
@@ -145,8 +126,7 @@ public class PlayerInteractor : MonoBehaviour
 
         if (interactPressed)
         {
-            if (target == null || !target.TryInteract(this))
-                ShowFeedback(HudMessage.NothingToInteract);
+            target?.TryInteract(this);
             return;
         }
 
@@ -155,17 +135,12 @@ public class PlayerInteractor : MonoBehaviour
 
         if (HeldBody != null)
         {
-            ShowFeedback(HudMessage.Dropped);
             pickup.BeginDrop();
         }
         else if (canPickUp)
         {
             pickup.PickUp(hit);
             ShowFeedback(HudMessage.PickedUp);
-        }
-        else
-        {
-            ShowFeedback(HudMessage.NothingToPickUp);
         }
     }
 
@@ -227,8 +202,17 @@ public class PlayerInteractor : MonoBehaviour
 
     internal void BeginCurse(RitualItem item)
     {
+        CancelCleanse();
         curseTarget = item;
         curseElapsed = 0f;
+    }
+
+    internal void BeginCleanse(CleansingStation station, RitualItem item)
+    {
+        CancelCurse();
+        cleanseTarget = station;
+        cleanseItem = item;
+        cleanseElapsed = 0f;
     }
 
     private void UpdateCurse(IInteractable target, bool held)
@@ -251,10 +235,45 @@ public class PlayerInteractor : MonoBehaviour
         }
     }
 
+    private void UpdateCleanse(IInteractable target, bool held)
+    {
+        if (!IsCleansing)
+            return;
+
+        bool stillHoldingItem = HeldBody != null && HeldBody.TryGetComponent(out RitualItem heldItem) &&
+                                heldItem == cleanseItem;
+        if (!held || !ReferenceEquals(target, cleanseTarget) || !stillHoldingItem ||
+            cleanseTarget.GetInteractionPrompt(this) != HudMessage.Cleanse)
+        {
+            CancelCleanse();
+            return;
+        }
+
+        cleanseElapsed += Time.deltaTime;
+        if (cleanseElapsed >= cleanseItem.CurseDuration)
+        {
+            cleanseTarget.CompleteCleanse(this, cleanseItem);
+            CancelCleanse();
+        }
+    }
+
     private void CancelCurse()
     {
         curseTarget = null;
         curseElapsed = 0f;
+    }
+
+    private void CancelCleanse()
+    {
+        cleanseTarget = null;
+        cleanseItem = null;
+        cleanseElapsed = 0f;
+    }
+
+    private void CancelTimedActions()
+    {
+        CancelCurse();
+        CancelCleanse();
     }
 
     internal void ReleaseHeldObject() => pickup.Release();

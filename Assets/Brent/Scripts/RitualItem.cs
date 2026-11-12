@@ -1,10 +1,19 @@
 using UnityEngine;
 
+public enum RitualItemCategory
+{
+    Cube,
+    Sphere,
+    Cylinder
+}
+
 public class RitualItem : MonoBehaviour, IInteractable
 {
+    [SerializeField] private RitualItemCategory category;
     [SerializeField] private int ritualValue = 1;
-    [SerializeField, Min(0.1f)] private float curseDuration = 3f;
+    [SerializeField] private float curseDuration = 3f;
 
+    public RitualItemCategory Category => category;
     public int RitualValue => ritualValue;
     public float CurseDuration => Mathf.Max(0.1f, curseDuration);
     public bool IsCursed { get; private set; }
@@ -33,10 +42,25 @@ public class RitualItem : MonoBehaviour, IInteractable
 
     internal void CompleteCurse(PlayerInteractor player)
     {
-        if (!CanCurse(player) || IsCursed)
-            return;
+        if (CanCurse(player) && TryCurse())
+            player.ShowFeedback(HudMessage.Cursed);
+    }
+
+    internal bool TryCurse()
+    {
+        if (!isActiveAndEnabled || IsCursed)
+            return false;
 
         IsCursed = true;
-        player.ShowFeedback(HudMessage.Cursed);
+        return true;
+    }
+
+    internal bool TryCleanse()
+    {
+        if (!isActiveAndEnabled || !IsCursed)
+            return false;
+
+        IsCursed = false;
+        return true;
     }
 }
