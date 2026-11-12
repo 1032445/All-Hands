@@ -29,6 +29,7 @@ public class RitualHud : MonoBehaviour
     [SerializeField] private GameObject bringCursedItemPrompt;
     [SerializeField] private GameObject offerPrompt;
     [SerializeField] private GameObject cleansePrompt;
+    [SerializeField] private GameObject pushPrompt;
 
     [Header("Feedback and game state")]
     [SerializeField] private GameObject pickedUpMessage;
@@ -98,6 +99,7 @@ public class RitualHud : MonoBehaviour
         ShowMessage(bringCursedItemPrompt, roundActive && prompt == HudMessage.BringCursedItem);
         ShowMessage(offerPrompt, roundActive && prompt == HudMessage.Offer);
         ShowMessage(cleansePrompt, roundActive && prompt == HudMessage.Cleanse);
+        ShowMessage(pushPrompt, roundActive && prompt == HudMessage.Push);
 
         HudMessage pickup = interactor.PickupPrompt;
         ShowMessage(pickupPrompt, roundActive && pickup == HudMessage.Pickup);

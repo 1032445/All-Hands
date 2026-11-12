@@ -24,5 +24,6 @@ public enum HudMessage
     CultistWin,
     Cleanse,
     Cleansed,
-    WrongOffering
+    WrongOffering,
+    Push
 }
