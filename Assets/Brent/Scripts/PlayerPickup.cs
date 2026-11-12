@@ -1,17 +1,15 @@
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerPickup : MonoBehaviour
 {
-    [SerializeField] private InputActionAsset inputActions;
     [SerializeField] private Camera viewCamera;
     [SerializeField] private LayerMask pickupLayers = Physics.DefaultRaycastLayers;
-    [SerializeField, Min(0.1f)] private float pickupRange = 3.5f;
-    [SerializeField, Min(0.1f)] private float holdDistance = 1.6f;
-    [SerializeField, Min(0f)] private float holdBelowCamera = 0.35f;
-    [SerializeField, Min(0.1f)] private float dropSpeed = 1.5f;
-    [SerializeField, Min(0.1f)] private float placementRange = 3f;
+    [SerializeField] private float holdDistance = 1.6f;
+    [SerializeField] private float holdBelowCamera = 0.35f;
+    [SerializeField] private float dropSpeed = 1.5f;
+    [SerializeField] private float placementRange = 3f;
 
     private const float CarryResponse = 12f;
     private const float MaxCarrySpeed = 10f;
@@ -20,50 +18,36 @@ public class PlayerPickup : MonoBehaviour
 
     private Rigidbody playerBody;
     private Rigidbody heldBody;
-    private InputAction interactAction;
+    private Collider[] heldColliders;
+    private readonly List<(Collider Player, Collider Item)> ignoredCollisions = new();
     private float dropTimeRemaining;
     private bool previousGravity;
     private RigidbodyInterpolation previousInterpolation;
     private CollisionDetectionMode previousCollisionDetection;
 
+    internal Rigidbody HeldBody => heldBody;
+    internal bool IsDropping => heldBody != null && dropTimeRemaining > 0f;
+
     private void Awake()
     {
-        InputAction source = inputActions != null ? inputActions.FindAction("Player/Interact") : null;
-        if (source == null || viewCamera == null)
+        if (viewCamera == null)
         {
             enabled = false;
             return;
         }
 
         playerBody = GetComponent<Rigidbody>();
-        interactAction = source.Clone();
     }
 
-    private void OnEnable() => interactAction?.Enable();
-
-    private void OnDisable()
-    {
-        interactAction?.Disable();
-        Release();
-    }
-
-    private void OnDestroy() => interactAction?.Dispose();
-
-    private void LateUpdate()
-    {
-        if (Cursor.lockState != CursorLockMode.Locked || !interactAction.WasPressedThisFrame())
-            return;
-
-        if (heldBody == null)
-            TryPickUp();
-        else if (dropTimeRemaining <= 0f)
-            BeginDrop();
-    }
+    private void OnDisable() => Release();
 
     private void FixedUpdate()
     {
         if (heldBody == null)
+        {
+            Release();
             return;
+        }
 
         if (dropTimeRemaining > 0f)
         {
@@ -83,19 +67,19 @@ public class PlayerPickup : MonoBehaviour
         heldBody.AddForce(velocityChange, ForceMode.VelocityChange);
     }
 
-    private void TryPickUp()
+    internal bool CanPickUp(RaycastHit hit)
     {
-        Ray ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        if (!Physics.Raycast(ray, out RaycastHit hit, pickupRange, Physics.DefaultRaycastLayers,
-                QueryTriggerInteraction.Ignore))
-            return;
-
         Rigidbody candidate = hit.rigidbody;
-        if (candidate == null || candidate == playerBody || candidate.isKinematic ||
-            (pickupLayers.value & (1 << hit.collider.gameObject.layer)) == 0)
-            return;
+        return isActiveAndEnabled && heldBody == null && candidate != null && candidate != playerBody &&
+               !candidate.isKinematic && (pickupLayers.value & (1 << hit.collider.gameObject.layer)) != 0;
+    }
 
-        heldBody = candidate;
+    internal void PickUp(RaycastHit hit)
+    {
+        RestorePlayerCollisions();
+        heldBody = hit.rigidbody;
+        heldColliders = heldBody.GetComponentsInChildren<Collider>();
+        IgnorePlayerCollisions();
         dropTimeRemaining = 0f;
         previousGravity = heldBody.useGravity;
         previousInterpolation = heldBody.interpolation;
@@ -106,10 +90,49 @@ public class PlayerPickup : MonoBehaviour
         heldBody.angularVelocity = Vector3.zero;
     }
 
-    private void BeginDrop()
+    private void IgnorePlayerCollisions()
     {
+        foreach (Collider playerCollider in playerBody.GetComponentsInChildren<Collider>())
+        {
+            if (playerCollider.attachedRigidbody != playerBody || playerCollider.isTrigger)
+                continue;
+
+            foreach (Collider itemCollider in heldColliders)
+            {
+                if (itemCollider.attachedRigidbody != heldBody || itemCollider.isTrigger ||
+                    Physics.GetIgnoreCollision(playerCollider, itemCollider))
+                    continue;
+
+                Physics.IgnoreCollision(playerCollider, itemCollider);
+                ignoredCollisions.Add((playerCollider, itemCollider));
+            }
+        }
+    }
+
+    private void RestorePlayerCollisions()
+    {
+        foreach ((Collider playerCollider, Collider itemCollider) in ignoredCollisions)
+        {
+            if (playerCollider != null && itemCollider != null)
+                Physics.IgnoreCollision(playerCollider, itemCollider, false);
+        }
+
+        ignoredCollisions.Clear();
+    }
+
+    internal void BeginDrop()
+    {
+        if (heldBody == null || IsDropping)
+            return;
+
         heldBody.linearVelocity = Vector3.zero;
         heldBody.angularVelocity = Vector3.zero;
+
+        if (ResolveDropOverlap())
+        {
+            Release();
+            return;
+        }
 
         if (heldBody.SweepTest(Vector3.down, out RaycastHit hit, placementRange, QueryTriggerInteraction.Ignore))
             dropTimeRemaining = hit.distance / dropSpeed + DropRampTime;
@@ -119,6 +142,14 @@ public class PlayerPickup : MonoBehaviour
 
     private void UpdateDrop()
     {
+        if (ResolveDropOverlap())
+        {
+            heldBody.linearVelocity = Vector3.zero;
+            heldBody.angularVelocity = Vector3.zero;
+            Release();
+            return;
+        }
+
         float step = Time.fixedDeltaTime;
         dropTimeRemaining -= step;
         if (dropTimeRemaining <= 0f)
@@ -133,7 +164,6 @@ public class PlayerPickup : MonoBehaviour
         float landingDistance = Mathf.Max(0.02f, -velocity.y * step);
         if (heldBody.SweepTest(Vector3.down, out RaycastHit hit, landingDistance, QueryTriggerInteraction.Ignore))
         {
-            // Keep continuous collision detection active through the landing step.
             velocity.y = Mathf.Max(velocity.y, -hit.distance / step);
             dropTimeRemaining = step;
         }
@@ -141,9 +171,60 @@ public class PlayerPickup : MonoBehaviour
         heldBody.linearVelocity = velocity;
     }
 
-    private void Release()
+    private bool ResolveDropOverlap()
+    {
+        Vector3 correction = Vector3.zero;
+        Vector3 bodyOffset = heldBody.position - heldBody.transform.position;
+
+        // Resolve corners in a few passes before handing the item back to physics.
+        for (int pass = 0; pass < 4; pass++)
+        {
+            bool overlapping = false;
+            foreach (Collider item in heldColliders)
+            {
+                if (item == null || !item.enabled || item.isTrigger || item.attachedRigidbody != heldBody)
+                    continue;
+
+                Bounds bounds = item.bounds;
+                Collider[] nearby = Physics.OverlapBox(bounds.center + bodyOffset + correction,
+                    bounds.extents, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+                foreach (Collider other in nearby)
+                {
+                    bool playerCollision = ignoredCollisions.Contains((other, item));
+                    if (other.attachedRigidbody == heldBody ||
+                        (Physics.GetIgnoreCollision(item, other) && !playerCollision) ||
+                        Physics.GetIgnoreLayerCollision(item.gameObject.layer, other.gameObject.layer))
+                        continue;
+
+                    Vector3 otherOffset = other.attachedRigidbody != null
+                        ? other.attachedRigidbody.position - other.attachedRigidbody.transform.position
+                        : Vector3.zero;
+                    if (Physics.ComputePenetration(item, item.transform.position + bodyOffset + correction,
+                            item.transform.rotation, other, other.transform.position + otherOffset,
+                            other.transform.rotation, out Vector3 direction, out float distance))
+                    {
+                        correction += direction * (distance + 0.01f);
+                        overlapping = true;
+                    }
+                }
+            }
+
+            if (!overlapping)
+                break;
+        }
+
+        if (correction == Vector3.zero)
+            return false;
+
+        heldBody.position += correction;
+        return true;
+    }
+
+    internal void Release()
     {
         dropTimeRemaining = 0f;
+        RestorePlayerCollisions();
+        heldColliders = null;
         if (heldBody == null)
             return;
 
