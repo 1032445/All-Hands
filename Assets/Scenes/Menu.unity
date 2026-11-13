@@ -393,21 +393,20 @@ MonoBehaviour:
   startButton2: {fileID: 960799048}
   rewatchButton: {fileID: 1511140346}
   dialogueLines:
-  - You are about to be placed into a hypothetical scenario based on our game All Hands
-  - Your part of a ship crew, with a cultist hiding amongst your ranks
+  - You are about to be placed into a hypothetical scenario based on our multiplayer game All Hands
+  - You're part of a ship crew, with a cultist hiding amongst your ranks
   - Your ship has a magical ward (the purple cube) staving off the unspeakable evils lurking outside
-  - It's your job to fuel this ward with the objects it demands every 30s
+  - It's your job to fuel this ward with the objects it demands. The type of object it wants changes every 30s
   - However...
-  - The cultist has cursed some of these objects
+  - The cultist is secretly cursing objects while you work
   - Feeding cursed objects to the ward will damage it
-  - You can check for curses at the lab (the green cube)
-  - The wards fuel is low, and it's highly damaged
-  - If you fully fuel the ward you win
+  - You can cleanse objects of curses at the lab (the green cube), which can then be freely offered
+  - The ward's fuel is low, and it's highly damaged
+  - If you fully fuel the ward, you win
   - If the cultist successfully sabotages the ward by making you feed it cursed objects, you lose
-  - Goodluck
+  - Good luck
   dialogueText: {fileID: 447278794}
   charDelay: 0.02
-  linePause: 3
 --- !u!1 &433185291
 GameObject:
   m_ObjectHideFlags: 0

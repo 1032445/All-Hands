@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.SceneManagement;
+using UnityEngine.InputSystem;
 
 public class MenuLogic : MonoBehaviour
 {
@@ -14,13 +15,32 @@ public class MenuLogic : MonoBehaviour
     [SerializeField] private TMP_Text dialogueText;
 
     [SerializeField] private float charDelay = 0.04f;
-    [SerializeField] private float linePause = 2f;
+    private Coroutine typingCoroutine;
+    private int lineIndex;
+    private int lastAdvanceFrame;
+    private bool dialogueActive;
+    private bool isTyping;
+
+    private void Update()
+    {
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            NextLine();
+        }
+    }
 
     public void StartButton()
     {
-        startButton.gameObject.SetActive(false);
+        if (dialogueActive) return;
 
-        StartCoroutine(PlayDialogue());
+        startButton.gameObject.SetActive(false);
+        rewatchButton.gameObject.SetActive(false);
+        startButton2.gameObject.SetActive(false);
+        dialogueText.gameObject.SetActive(true);
+        dialogueActive = true;
+        lineIndex = 0;
+        lastAdvanceFrame = Time.frameCount;
+        ShowLine();
     }
 
     public void LoadScene()
@@ -29,30 +49,46 @@ public class MenuLogic : MonoBehaviour
     }
 
 
-    private IEnumerator PlayDialogue()
+    public void NextLine()
     {
-        rewatchButton.gameObject.SetActive(false);
-        startButton2.gameObject.SetActive(false);
-        dialogueText.gameObject.SetActive(true);
+        if (!dialogueActive || lastAdvanceFrame == Time.frameCount) return;
+        lastAdvanceFrame = Time.frameCount;
 
-        dialogueText.text = "";
-
-        foreach (string line in dialogueLines)
+        if (isTyping)
         {
-            dialogueText.text = "";
-
-            foreach (char character in line)
-            {
-                dialogueText.text += character;
-                yield return new WaitForSeconds(charDelay);
-            }
-
-            yield return new WaitForSeconds(linePause);
+            StopCoroutine(typingCoroutine);
+            isTyping = false;
+            dialogueText.text = dialogueLines[lineIndex];
+            return;
         }
 
-        dialogueText.text = "";
+        lineIndex++;
+        ShowLine();
+    }
 
-        rewatchButton.gameObject.SetActive(true);
-        startButton2.gameObject.SetActive(true);
+    private void ShowLine()
+    {
+        if (dialogueLines == null || lineIndex >= dialogueLines.Length)
+        {
+            dialogueText.text = "";
+            dialogueActive = false;
+            rewatchButton.gameObject.SetActive(true);
+            startButton2.gameObject.SetActive(true);
+            return;
+        }
+
+        typingCoroutine = StartCoroutine(TypeLine(dialogueLines[lineIndex]));
+    }
+
+    private IEnumerator TypeLine(string line)
+    {
+        isTyping = true;
+        dialogueText.text = "";
+        foreach (char character in line)
+        {
+            dialogueText.text += character;
+            yield return new WaitForSeconds(charDelay);
+        }
+        isTyping = false;
     }
 }
