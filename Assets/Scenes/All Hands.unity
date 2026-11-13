@@ -3053,9 +3053,9 @@ MonoBehaviour:
   requiredCategory: 0
   categoryChangeInterval: 30
   crewTarget: 10
-  crewProgress: 1
+  crewProgress: 5
   cultistTarget: 10
-  cultistProgress: 8
+  cultistProgress: 9
 --- !u!65 &1719582017
 BoxCollider:
   m_ObjectHideFlags: 0
