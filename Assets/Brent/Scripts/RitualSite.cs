@@ -1,10 +1,13 @@
 using UnityEngine;
+using UnityEngine.Events;
 
 public class RitualSite : MonoBehaviour, IInteractable
 {
     [SerializeField] private float offerDistance = 1f;
     [SerializeField] private RitualItemCategory requiredCategory = RitualItemCategory.Cube;
     [SerializeField, Min(0.1f)] private float categoryChangeInterval = 30f;
+    public UnityEvent<int> updateEnvironment;
+
     [Header("Ritual Progress")]
     [SerializeField] private int crewTarget = 3;
     [SerializeField] private int crewProgress;
@@ -100,6 +103,7 @@ public class RitualSite : MonoBehaviour, IInteractable
         if (item.IsCursed)
         {
             cultistProgress += Mathf.Min(value, cultistTarget - cultistProgress);
+            UpdateEnviroment();
         }
         else if (wrongShape)
         {
@@ -129,5 +133,40 @@ public class RitualSite : MonoBehaviour, IInteractable
             Winner = RitualRole.Crew;
         else if (cultistProgress >= cultistTarget)
             Winner = RitualRole.Cultist;
+    }
+
+    public void UpdateEnviroment()
+    {
+        switch (cultistProgress)
+        {
+            case 1:
+                GameManager.instance.UpdateEnviromentStage(1);
+
+                break;
+
+            case 3:
+                GameManager.instance.UpdateEnviromentStage(2);
+
+                break;
+
+            case 5:
+                GameManager.instance.UpdateEnviromentStage(3);
+
+                break;
+
+            case 7:
+                GameManager.instance.UpdateEnviromentStage(4);
+
+                break;
+
+            case 9:
+                GameManager.instance.UpdateEnviromentStage(5);
+
+                break;
+
+            default:
+                break;
+        }
+
     }
 }
